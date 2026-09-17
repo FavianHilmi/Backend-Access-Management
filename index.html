@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+
+  <div id="loginCard" class="bg-white p-8 rounded w-96">
+    <h2 class="text-2xl mb-4 text-center">Login System</h2>
+    <div class="mb-4">
+      <label class="block mb-1 text-sm">Username</label>
+      <input type="text" id="username" class="w-full border p-2 rounded" value="andi_ganda">
+    </div>
+    <div class="mb-4">
+      <label class="block mb-1 text-sm">Password</label>
+      <input type="password" id="password" class="w-full border p-2 rounded" value="password123">
+    </div>
+    <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-2">Login</button>
+  </div>
+
+  <div id="roleModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-6 w-80">
+      <h3 class="text-lg mb-2">Pilih Role Akses</h3>
+      <div id="roleContainer" class="space-y-2 mb-4"></div>
+      <button onclick="handleSelectRole()" class="w-full bg-green-600 text-white p-2">Next</button>
+    </div>
+  </div>
+
+  <div id="dashboard" class="hidden fixed inset-0 flex bg-gray-100">
+    <aside class="w-64 bg-white border-r p-4 overflow-y-auto">
+      <h3 class="text-lg mb-4 border-b pb-2">Navigation</h3>
+      <ul id="menuTree" class="space-y-1 text-sm"></ul>
+    </aside>
+    <main class="flex-1 p-8">
+      <h1 class="text-2xl">Dashboard App</h1>
+    </main>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:5000/api';
+    let selectedUserId = null;
+
+    async function handleLogin() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        if (data.data.is_multiple_role) {
+          selectedUserId = data.data.user_id;
+          renderRoleOptions(data.data.roles);
+        } else {
+          localStorage.setItem('token', data.data.token);
+          loadDashboard();
+        }
+      } else {
+        alert(data.message);
+      }
+    }
+
+    function renderRoleOptions(roles) {
+      const container = document.getElementById('roleContainer');
+      container.innerHTML = roles.map((r, i) => `
+        <label class="block p-2 border rounded cursor-pointer hover:bg-gray-50">
+          <input type="radio" name="selected_role" value="${r.role_id}" ${i === 0 ? 'checked' : ''}>
+          <span class="ml-2">${r.name}</span>
+        </label>
+      `).join('');
+      document.getElementById('roleModal').classList.remove('hidden');
+    }
+
+    async function handleSelectRole() {
+      const roleId = document.querySelector('input[name="selected_role"]:checked').value;
+      const res = await fetch(`${API_URL}/auth/select-role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: selectedUserId, role_id: parseInt(roleId) })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        localStorage.setItem('token', data.data.token);
+        document.getElementById('roleModal').classList.add('hidden');
+        loadDashboard();
+      }
+    }
+
+    async function loadDashboard() {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/user/menus`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        document.getElementById('loginCard').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        
+        const menuTreeContainer = document.getElementById('menuTree');
+        menuTreeContainer.innerHTML = buildTreeUI(data.data);
+      }
+    }
+
+    function buildTreeUI(menus) {
+      return menus.map(m => `
+        <li class="my-1">
+          <div class="p-2 hover:bg-gray-100 rounded font-medium flex justify-between items-center cursor-pointer">
+            <span>${m.name}</span>
+          </div>
+          ${m.children && m.children.length > 0 ? `
+            <ul class="pl-4 border-l border-gray-200 ml-2 space-y-1">
+              ${buildTreeUI(m.children)}
+            </ul>
+          ` : ''}
+        </li>
+      `).join('');
+    }
+  </script>
+</body>
+</html>
